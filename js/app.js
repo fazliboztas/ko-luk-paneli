@@ -37,9 +37,10 @@ function storePrograms() {
 async function saveProgram(program) {
     storePrograms();
     if (!firebaseServices || !["coach", "student"].includes(userRole)) return;
+    const firestoreProgram = Object.fromEntries(Object.entries(program).filter(([, value]) => value !== undefined));
     await firebaseServices.firestoreSdk.setDoc(
         firebaseServices.firestoreSdk.doc(firebaseServices.db, "tasks", program.id),
-        userRole === "coach" ? { ...program, coachId: signedInUser.uid } : program
+        userRole === "coach" ? { ...firestoreProgram, coachId: signedInUser.uid } : firestoreProgram
     );
 }
 
@@ -234,7 +235,7 @@ function render() {
             description: formData.get("description").trim(),
             duration: formData.get("duration"),
             goalQuestions: formData.get("goalQuestions") ? Number(formData.get("goalQuestions")) : null,
-            resourceUrl: formData.get("resourceUrl").trim(),
+            resourceUrl: formData.get("resourceUrl").trim() === "-" ? "" : formData.get("resourceUrl").trim(),
             completed: false
         };
         let program;
@@ -247,7 +248,9 @@ function render() {
                 student.programStart = selectedWeekStart;
                 saveStudents();
             }
-            program = { id: crypto.randomUUID(), studentId: selectedStudentId, weekStart: selectedWeekStart, ...taskData };
+            const dayTasks = programs.filter(item => item.studentId === selectedStudentId && item.weekStart === selectedWeekStart && item.day === taskData.day);
+            const nextOrder = dayTasks.length ? Math.max(...dayTasks.map(item => Number(item.order) || 0)) + 1 : 0;
+            program = { id: crypto.randomUUID(), studentId: selectedStudentId, weekStart: selectedWeekStart, order: nextOrder, ...taskData };
             programs.push(program);
         }
         try {
@@ -344,7 +347,10 @@ function render() {
         button.addEventListener("click", async () => {
             const task = programs.find(program => program.id === button.dataset.copyTask);
             if (!task) return;
-            const copy = { ...task, id: crypto.randomUUID(), completed: false, result: undefined };
+            const { result, solvedQuestions, ...copySource } = task;
+            const siblingTasks = programs.filter(program => program.studentId === task.studentId && program.weekStart === task.weekStart && program.day === task.day);
+            const copyOrder = siblingTasks.length ? Math.max(...siblingTasks.map(program => Number(program.order) || 0)) + 1 : 0;
+            const copy = { ...copySource, id: crypto.randomUUID(), completed: false, order: copyOrder };
             programs.push(copy);
             try {
                 await saveProgram(copy);
@@ -444,10 +450,25 @@ function render() {
             const taskId = event.dataTransfer.getData("text/plain");
             const task = programs.find(program => program.id === taskId);
             if (!task) return;
-            const copy = { ...task, id: crypto.randomUUID(), day: zone.dataset.dayDropzone, completed: false, result: undefined };
-            programs.push(copy);
+            const originalDay = task.day;
+            const targetCard = event.target.closest("[data-task-card]");
+            const targetId = targetCard?.dataset.taskCard;
+            const destinationDay = zone.dataset.dayDropzone;
+            const weekTasks = programs.filter(program => program.studentId === task.studentId && (program.weekStart || academicWeeks[0].key) === (task.weekStart || academicWeeks[0].key));
+            const destination = weekTasks
+                .filter(program => program.day === destinationDay && program.id !== task.id)
+                .sort((first, second) => (Number(first.order) || 0) - (Number(second.order) || 0));
+            const targetIndex = targetId ? destination.findIndex(program => program.id === targetId) : destination.length;
+            destination.splice(targetIndex < 0 ? destination.length : targetIndex, 0, task);
+            const changedTasks = destination.map((program, order) => ({ ...program, day: destinationDay, order }));
+            programs = programs.map(program => changedTasks.find(changed => changed.id === program.id) || program);
+            const oldDayTasks = originalDay === destinationDay ? [] : programs
+                .filter(program => program.id !== task.id && program.studentId === task.studentId && program.weekStart === task.weekStart && program.day === originalDay)
+                .sort((first, second) => (Number(first.order) || 0) - (Number(second.order) || 0))
+                .map((program, order) => ({ ...program, order }));
+            programs = programs.map(program => oldDayTasks.find(changed => changed.id === program.id) || program);
             try {
-                await saveProgram(copy);
+                await Promise.all([...changedTasks, ...oldDayTasks].map(saveProgram));
                 render();
             } catch (error) {
                 await showSaveError(error);
@@ -455,8 +476,10 @@ function render() {
         });
     });
 
+    renderDashboardCharts();
     renderExamCharts();
     renderStudentExamCharts();
+    renderStudentWeeklyProgressChart();
 }
 
 function renderLogin() {
