@@ -13,6 +13,7 @@ function studentTaskCard(task) {
 }
 
 function studentWeekColumn(day, dayTasks) {
+    dayTasks.sort((first, second) => (Number(first.order) || 0) - (Number(second.order) || 0));
     const duration = dayTasks.reduce((total, task) => total + (Number(task.duration) || 0), 0);
     return `<section class="student-week-day"><header><div><h3>${day}</h3><small>${formatStudyDuration(duration)}</small></div><span>${dayTasks.length}</span></header><div class="student-day-tasks">${dayTasks.length ? dayTasks.map(studentTaskCard).join("") : `<p class="student-day-empty">Görev yok</p>`}</div></section>`;
 }
@@ -37,6 +38,13 @@ function renderStudentExamCharts() {
     const branchTasks = results.filter(task => !["TYT Genel Deneme", "AYT Genel Deneme"].includes(task.subject));
     const branchCanvas = document.getElementById("studentBranchChart");
     if (branchCanvas && branchTasks.length) new Chart(branchCanvas, { type: "bar", data: { labels: branchTasks.map(task => `${task.subject} · ${task.weekStart || ""}`), datasets: [{ label: "Net", data: branchTasks.map(task => Number(Object.values(task.result.scores)[0]) || 0), backgroundColor: "#2563eb", borderRadius: 6 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { title: { display: true, text: "Net" } } } } });
+}
+
+function renderStudentWeeklyProgressChart() {
+    const canvas = document.getElementById("studentWeeklyProgressChart");
+    if (!canvas || !window.Chart) return;
+    const weekly = weeklyProgressForStudent(selectedStudentId);
+    new Chart(canvas, { type: "bar", data: { labels: weekly.map(item => item.week), datasets: [{ label: "Çözülen soru", data: weekly.map(item => item.questions), backgroundColor: "#2563eb", borderRadius: 5, yAxisID: "questions" }, { label: "Çalışma süresi (saat)", data: weekly.map(item => Number((item.minutes / 60).toFixed(2))), type: "line", borderColor: "#16a34a", backgroundColor: "#16a34a", tension: .35, yAxisID: "duration" }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } }, scales: { questions: { beginAtZero: true, position: "left", title: { display: true, text: "Soru" } }, duration: { beginAtZero: true, position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Saat" } } } } });
 }
 
 function studentPanelPage() {
@@ -65,7 +73,8 @@ function studentPanelPage() {
         <div class="student-hero"><div><p class="text-blue-200 font-medium">Boztaş Koçluk</p><h2>Selam, ${escapeHtml(student.name.split(" ")[0])} 👋</h2><p>Bu hafta planını tamamlayarak hedeflerine bir adım daha yaklaş.</p></div><div class="student-progress"><span>%${completionRate}</span><small>program tamamlandı</small></div></div>
         <div class="student-preview-bar"><label for="studentPreviewSelect">Önizlenen öğrenci</label><select id="studentPreviewSelect">${students.map(item => `<option value="${item.id}" ${item.id === student.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select><span>Bu seçim yalnızca koç önizlemesidir.</span></div>
         <div class="student-week-control"><button data-week-shift="-1" ${weekIndex === 0 ? "disabled" : ""}><i class="fa-solid fa-chevron-left"></i></button><div><strong>${week.label}</strong><span>${week.milestone || "Haftalık çalışma planın"}</span></div><button data-week-shift="1" ${weekIndex === visibleAcademicWeeks.length - 1 ? "disabled" : ""}><i class="fa-solid fa-chevron-right"></i></button></div>
-        <div class="student-stats student-stats-five"><div><i class="fa-solid fa-list-check"></i><p>${tasks.length}</p><span>Toplam görev</span></div><div><i class="fa-solid fa-circle-check"></i><p>%${completionRate}</p><span>Program tamamlandı</span></div><div><i class="fa-solid fa-book-open"></i><p>${solvedQuestions}</p><span>Bu hafta çözülen soru</span></div><div><i class="fa-solid fa-chart-line"></i><p>${tytAverage.toFixed(2)}</p><span>TYT net ortalaması</span></div><div><i class="fa-solid fa-chart-line"></i><p>${aytAverage.toFixed(2)}</p><span>AYT net ortalaması</span></div></div>
+        <div class="student-stats student-stats-six"><div><i class="fa-solid fa-list-check"></i><p>${tasks.length}</p><span>Toplam görev</span></div><div><i class="fa-solid fa-circle-check"></i><p>%${completionRate}</p><span>Program tamamlandı</span></div><div><i class="fa-solid fa-book-open"></i><p>${solvedQuestions}</p><span>Bu hafta çözülen soru</span></div><div><i class="fa-regular fa-clock"></i><p>${formatStudyDuration(totalMinutes)}</p><span>Bu hafta çalışma süresi</span></div><div><i class="fa-solid fa-chart-line"></i><p>${tytAverage.toFixed(2)}</p><span>TYT net ortalaması</span></div><div><i class="fa-solid fa-chart-line"></i><p>${aytAverage.toFixed(2)}</p><span>AYT net ortalaması</span></div></div>
+        <section class="student-weekly-progress"><div><h3>Haftalık çalışma gelişimin</h3><p>Çözdüğün soru sayısını ve planlanan çalışma süreni haftalara göre karşılaştır.</p></div><div class="student-progress-chart"><canvas id="studentWeeklyProgressChart"></canvas></div></section>
         <div class="mt-10"><div><h3 class="text-2xl font-bold text-slate-900">Bu haftaki programın</h3><p class="text-slate-500 mt-1">Görevleri gün gün takip et; tamamladıkça işaretle, denemelerde netlerini gir.</p></div><div class="student-week-board mt-5">${weekColumns}</div></div>${studentExamAnalysis(student)}
     </div>`;
 }
