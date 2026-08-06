@@ -70,6 +70,15 @@ async function showSaveError(error) {
     render();
 }
 
+function celebrateTaskCompletion() {
+    const colors = ["#f43f5e", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7"];
+    const fireworks = document.createElement("div");
+    fireworks.className = "completion-fireworks";
+    fireworks.innerHTML = Array.from({ length: 42 }, (_, index) => `<i style="--x:${(Math.random() * 100).toFixed(1)}vw;--y:${(Math.random() * 60 + 10).toFixed(1)}vh;--c:${colors[index % colors.length]};--d:${(Math.random() * .35).toFixed(2)}s"></i>`).join("");
+    document.body.append(fireworks);
+    window.setTimeout(() => fireworks.remove(), 1700);
+}
+
 function render() {
     if (!authReady) {
         app.innerHTML = `<main class="min-h-screen bg-slate-950 grid place-items-center p-5"><div class="text-center text-white"><i class="fa-solid fa-spinner fa-spin text-3xl"></i><p class="mt-4 text-slate-300">Oturum yükleniyor…</p></div></main>`;
@@ -203,6 +212,18 @@ function render() {
     document.getElementById("closeTaskModal")?.addEventListener("click", closeTaskModal);
     document.getElementById("cancelTaskModal")?.addEventListener("click", closeTaskModal);
 
+    const updateQuestionGoalRequirement = () => {
+        const selectedType = document.querySelector('input[name="taskType"]:checked')?.value;
+        const input = document.getElementById("taskGoalQuestions");
+        const wrap = document.getElementById("taskQuestionGoalWrap");
+        if (!input || !wrap) return;
+        const required = ["Soru", "Tekrar", "Deneme"].includes(selectedType);
+        input.required = required;
+        wrap.classList.toggle("hidden", !required);
+    };
+    document.querySelectorAll('input[name="taskType"]').forEach(input => input.addEventListener("change", updateQuestionGoalRequirement));
+    updateQuestionGoalRequirement();
+
     document.getElementById("taskForm")?.addEventListener("submit", async event => {
         event.preventDefault();
         const formData = new FormData(event.currentTarget);
@@ -212,6 +233,8 @@ function render() {
             taskType: formData.get("taskType"),
             description: formData.get("description").trim(),
             duration: formData.get("duration"),
+            goalQuestions: formData.get("goalQuestions") ? Number(formData.get("goalQuestions")) : null,
+            resourceUrl: formData.get("resourceUrl").trim(),
             completed: false
         };
         let program;
@@ -339,7 +362,7 @@ function render() {
             if (task.taskType === "Deneme") {
                 resultTaskId = task.id;
                 render();
-            } else if (task.taskType === "Soru" && !task.completed) {
+            } else if (["Soru", "Tekrar"].includes(task.taskType) && !task.completed) {
                 questionTaskId = task.id;
                 render();
             } else {
@@ -350,6 +373,7 @@ function render() {
                     if (userRole === "student") await updateStudentTask(task.id, changes);
                     else await saveProgram(updatedTask);
                     render();
+                    if (changes.completed) celebrateTaskCompletion();
                 } catch (error) {
                     await showSaveError(error);
                 }
@@ -372,6 +396,7 @@ function render() {
             else await saveProgram(updatedTask);
             questionTaskId = null;
             render();
+            celebrateTaskCompletion();
         } catch (error) {
             await showSaveError(error);
         }
@@ -388,7 +413,7 @@ function render() {
         (task.subject === "TYT Genel Deneme" ? ["Türkçe", "Sosyal", "Matematik", "Fizik", "Kimya", "Biyoloji"]
             : task.subject === "AYT Genel Deneme" ? ["Matematik", "Fizik", "Kimya", "Biyoloji"] : [task.subject])
             .forEach(subject => { scores[subject] = formData.get(`score-${subject}`); });
-        const changes = { completed: true, result: { scores, note: formData.get("note").trim() } };
+        const changes = { completed: true, solvedQuestions: Number(formData.get("solvedQuestions")), result: { scores, note: formData.get("note").trim() } };
         const updatedTask = { ...task, ...changes };
         programs = programs.map(program => program.id === resultTaskId ? updatedTask : program);
         try {
@@ -396,6 +421,7 @@ function render() {
             else await saveProgram(updatedTask);
             resultTaskId = null;
             render();
+            celebrateTaskCompletion();
         } catch (error) {
             await showSaveError(error);
         }
