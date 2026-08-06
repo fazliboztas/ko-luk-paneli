@@ -1,13 +1,27 @@
 function weeklyProgressForStudent(studentId) {
+    const student = students.find(item => item.id === studentId);
+    const studentTasks = programs.filter(task => task.studentId === studentId);
     const byWeek = new Map();
-    programs.filter(task => task.studentId === studentId).forEach(task => {
+    studentTasks.forEach(task => {
         const week = task.weekStart || academicWeeks[0].key;
         const current = byWeek.get(week) || { week, questions: 0, minutes: 0 };
         current.questions += Number(task.solvedQuestions) || 0;
         current.minutes += Number(task.duration) || 0;
         byWeek.set(week, current);
     });
-    return [...byWeek.values()].sort((first, second) => first.week.localeCompare(second.week)).slice(-10);
+    if (!studentTasks.length) return [];
+    const taskWeeks = [...byWeek.keys()].sort();
+    const startKey = student?.programStart || taskWeeks[0];
+    const endKey = taskWeeks.at(-1);
+    const [startYear, startMonth, startDay] = startKey.split("-").map(Number);
+    const cursor = new Date(startYear, startMonth - 1, startDay);
+    const progress = [];
+    for (let index = 1; isoDate(cursor) <= endKey && index <= 100; index += 1) {
+        const week = isoDate(cursor);
+        progress.push({ label: `${index}. hafta`, ...(byWeek.get(week) || { week, questions: 0, minutes: 0 }) });
+        cursor.setDate(cursor.getDate() + 7);
+    }
+    return progress;
 }
 
 function dashboardPage() {
@@ -30,11 +44,11 @@ function renderDashboardCharts() {
     if (currentPage !== "dashboard" || !window.Chart) return;
     students.forEach((student, index) => {
         const weekly = weeklyProgressForStudent(student.id);
-        const labels = weekly.map(item => item.week);
-        const options = unit => ({ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, title: { display: true, text: unit } } } });
+        const labels = weekly.map(item => item.label);
+        const options = unit => ({ responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: "index" }, plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: "Program haftası" } }, y: { beginAtZero: true, title: { display: true, text: unit } } } });
         const questionsCanvas = document.getElementById(`dashboardQuestions-${index}`);
         const durationCanvas = document.getElementById(`dashboardDuration-${index}`);
-        if (questionsCanvas) new Chart(questionsCanvas, { type: "line", data: { labels, datasets: [{ data: weekly.map(item => item.questions), borderColor: "#2563eb", backgroundColor: "rgb(37 99 235 / .12)", fill: true, tension: .35 }] }, options: options("Soru") });
-        if (durationCanvas) new Chart(durationCanvas, { type: "bar", data: { labels, datasets: [{ data: weekly.map(item => Number((item.minutes / 60).toFixed(2))), backgroundColor: "#16a34a", borderRadius: 6 }] }, options: options("Saat") });
+        if (questionsCanvas) new Chart(questionsCanvas, { type: "line", data: { labels, datasets: [{ label: "Çözülen soru", data: weekly.map(item => item.questions), borderColor: "#2563eb", backgroundColor: "rgb(37 99 235 / .12)", pointBackgroundColor: "#2563eb", pointRadius: 4, fill: true, tension: .3 }] }, options: options("Soru") });
+        if (durationCanvas) new Chart(durationCanvas, { type: "line", data: { labels, datasets: [{ label: "Çalışma süresi", data: weekly.map(item => Number((item.minutes / 60).toFixed(2))), borderColor: "#16a34a", backgroundColor: "rgb(22 163 74 / .12)", pointBackgroundColor: "#16a34a", pointRadius: 4, fill: true, tension: .3 }] }, options: options("Saat") });
     });
 }
