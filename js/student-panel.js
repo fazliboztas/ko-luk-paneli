@@ -3,15 +3,18 @@ function studentTaskCard(task) {
     return `<article class="student-task ${task.completed ? "student-task-done" : ""}">
         <div class="flex items-start justify-between gap-3"><div><span class="task-type-badge !ml-0">${escapeHtml(task.taskType || "Görev")}</span><h3 class="font-bold text-slate-800 mt-2">${escapeHtml(task.subject)}</h3></div><i class="fa-solid ${task.completed ? "fa-circle-check text-green-600" : "fa-circle text-slate-300"} text-xl"></i></div>
         <p class="text-slate-600 text-sm mt-3 leading-6">${escapeHtml(task.description || task.topic || "Açıklama yok")}</p>
-        ${task.solvedQuestions !== undefined ? `<p class="text-xs font-semibold text-blue-700 mt-2"><i class="fa-solid fa-book-open mr-1"></i>${task.solvedQuestions} soru çözüldü</p>` : ""}
+        ${task.goalQuestions ? `<p class="text-xs font-semibold text-blue-700 mt-2"><i class="fa-solid fa-bullseye mr-1"></i>Hedef: ${task.goalQuestions} soru</p>` : ""}
+        ${task.solvedQuestions !== undefined ? `<p class="text-xs font-semibold text-green-700 mt-2"><i class="fa-solid fa-book-open mr-1"></i>${task.solvedQuestions} soru çözüldü</p>` : ""}
         <div class="flex items-center justify-between mt-4 pt-3 border-t border-slate-100"><span class="text-xs text-slate-500"><i class="fa-regular fa-clock mr-1"></i>${task.duration ? `${escapeHtml(task.duration)} dk` : escapeHtml(task.goal || "—")}</span>${resultTotal !== null ? `<span class="font-bold text-green-700 text-sm">${resultTotal.toFixed(2)} net</span>` : ""}</div>
+        ${taskResourceLink(task)}
         ${task.result?.note ? `<div class="student-note"><i class="fa-regular fa-note-sticky mr-1"></i>${escapeHtml(task.result.note)}</div>` : ""}
         <button data-complete-task="${task.id}" class="student-task-action ${task.completed ? "student-task-action-done" : ""}">${task.taskType === "Deneme" ? (task.completed ? "Sonucu düzenle" : "Deneme sonucunu gir") : (task.completed ? "Tamamlandı" : "Tamamla")}</button>
     </article>`;
 }
 
 function studentWeekColumn(day, dayTasks) {
-    return `<section class="student-week-day"><header><h3>${day}</h3><span>${dayTasks.length}</span></header><div class="student-day-tasks">${dayTasks.length ? dayTasks.map(studentTaskCard).join("") : `<p class="student-day-empty">Görev yok</p>`}</div></section>`;
+    const duration = dayTasks.reduce((total, task) => total + (Number(task.duration) || 0), 0);
+    return `<section class="student-week-day"><header><div><h3>${day}</h3><small>${formatStudyDuration(duration)}</small></div><span>${dayTasks.length}</span></header><div class="student-day-tasks">${dayTasks.length ? dayTasks.map(studentTaskCard).join("") : `<p class="student-day-empty">Görev yok</p>`}</div></section>`;
 }
 
 function studentExamAnalysis(student) {
