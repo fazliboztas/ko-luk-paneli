@@ -30,13 +30,44 @@ async function saveStudents() {
     )));
 }
 
-async function savePrograms() {
+function storePrograms() {
     localStorage.setItem("boztas-programs", JSON.stringify(programs));
+}
+
+async function saveProgram(program) {
+    storePrograms();
     if (!firebaseServices || !["coach", "student"].includes(userRole)) return;
-    await Promise.all(programs.map(program => firebaseServices.firestoreSdk.setDoc(
+    await firebaseServices.firestoreSdk.setDoc(
         firebaseServices.firestoreSdk.doc(firebaseServices.db, "tasks", program.id),
         userRole === "coach" ? { ...program, coachId: signedInUser.uid } : program
-    )));
+    );
+}
+
+async function updateStudentTask(taskId, changes) {
+    storePrograms();
+    if (!firebaseServices || userRole !== "student") return;
+    await firebaseServices.firestoreSdk.updateDoc(
+        firebaseServices.firestoreSdk.doc(firebaseServices.db, "tasks", taskId),
+        changes
+    );
+}
+
+async function deleteProgram(taskId) {
+    storePrograms();
+    if (!firebaseServices || userRole !== "coach") return;
+    await firebaseServices.firestoreSdk.deleteDoc(firebaseServices.firestoreSdk.doc(firebaseServices.db, "tasks", taskId));
+}
+
+async function showSaveError(error) {
+    console.error("Program kaydedilemedi:", error);
+    // Ekrandaki geçici değişikliği, buluttaki gerçek veriyle geri eşitle.
+    try {
+        await loadFirebaseData();
+    } catch (reloadError) {
+        console.error("Bulut verisi yeniden yüklenemedi:", reloadError);
+    }
+    window.alert("Değişiklik buluta kaydedilemedi. İnternet bağlantısını ve Firebase kurallarını kontrol edip tekrar deneyin.");
+    render();
 }
 
 function render() {
@@ -168,7 +199,7 @@ function render() {
     document.getElementById("closeTaskModal")?.addEventListener("click", closeTaskModal);
     document.getElementById("cancelTaskModal")?.addEventListener("click", closeTaskModal);
 
-    document.getElementById("taskForm")?.addEventListener("submit", event => {
+    document.getElementById("taskForm")?.addEventListener("submit", async event => {
         event.preventDefault();
         const formData = new FormData(event.currentTarget);
         const taskData = {
@@ -179,27 +210,38 @@ function render() {
             duration: formData.get("duration"),
             completed: false
         };
+        let program;
         if (editingTaskId) {
-            programs = programs.map(program => program.id === editingTaskId ? { ...program, ...taskData } : program);
+            program = { ...programs.find(item => item.id === editingTaskId), ...taskData };
+            programs = programs.map(item => item.id === editingTaskId ? program : item);
         } else {
             const student = students.find(item => item.id === selectedStudentId);
             if (!student.programStart) {
                 student.programStart = selectedWeekStart;
                 saveStudents();
             }
-            programs.push({ id: crypto.randomUUID(), studentId: selectedStudentId, weekStart: selectedWeekStart, ...taskData });
+            program = { id: crypto.randomUUID(), studentId: selectedStudentId, weekStart: selectedWeekStart, ...taskData };
+            programs.push(program);
         }
-        savePrograms();
-        isTaskModalOpen = false;
-        editingTaskId = null;
-        render();
+        try {
+            await saveProgram(program);
+            isTaskModalOpen = false;
+            editingTaskId = null;
+            render();
+        } catch (error) {
+            await showSaveError(error);
+        }
     });
 
     document.querySelectorAll("[data-delete-task]").forEach(button => {
-        button.addEventListener("click", () => {
+        button.addEventListener("click", async () => {
             programs = programs.filter(program => program.id !== button.dataset.deleteTask);
-            savePrograms();
-            render();
+            try {
+                await deleteProgram(button.dataset.deleteTask);
+                render();
+            } catch (error) {
+                await showSaveError(error);
+            }
         });
     });
 
@@ -217,7 +259,6 @@ function render() {
                 selectedWeekStart = "";
             }
             saveStudents();
-            savePrograms();
             if (firebaseServices && userRole === "coach") {
                 firebaseServices.firestoreSdk.deleteDoc(firebaseServices.firestoreSdk.doc(firebaseServices.db, "students", student.id));
                 studentPrograms.forEach(program => firebaseServices.firestoreSdk.deleteDoc(firebaseServices.firestoreSdk.doc(firebaseServices.db, "tasks", program.id)));
@@ -273,17 +314,22 @@ function render() {
     });
 
     document.querySelectorAll("[data-copy-task]").forEach(button => {
-        button.addEventListener("click", () => {
+        button.addEventListener("click", async () => {
             const task = programs.find(program => program.id === button.dataset.copyTask);
             if (!task) return;
-            programs.push({ ...task, id: crypto.randomUUID(), completed: false, result: undefined });
-            savePrograms();
-            render();
+            const copy = { ...task, id: crypto.randomUUID(), completed: false, result: undefined };
+            programs.push(copy);
+            try {
+                await saveProgram(copy);
+                render();
+            } catch (error) {
+                await showSaveError(error);
+            }
         });
     });
 
     document.querySelectorAll("[data-complete-task]").forEach(button => {
-        button.addEventListener("click", () => {
+        button.addEventListener("click", async () => {
             const task = programs.find(program => program.id === button.dataset.completeTask);
             if (!task) return;
             if (task.taskType === "Deneme") {
@@ -293,9 +339,16 @@ function render() {
                 questionTaskId = task.id;
                 render();
             } else {
-                programs = programs.map(program => program.id === task.id ? { ...program, completed: !program.completed } : program);
-                savePrograms();
-                render();
+                const changes = { completed: !task.completed };
+                const updatedTask = { ...task, ...changes };
+                programs = programs.map(program => program.id === task.id ? updatedTask : program);
+                try {
+                    if (userRole === "student") await updateStudentTask(task.id, changes);
+                    else await saveProgram(updatedTask);
+                    render();
+                } catch (error) {
+                    await showSaveError(error);
+                }
             }
         });
     });
@@ -303,19 +356,27 @@ function render() {
     const closeQuestionModal = () => { questionTaskId = null; render(); };
     document.getElementById("closeQuestionModal")?.addEventListener("click", closeQuestionModal);
     document.getElementById("cancelQuestionModal")?.addEventListener("click", closeQuestionModal);
-    document.getElementById("questionForm")?.addEventListener("submit", event => {
+    document.getElementById("questionForm")?.addEventListener("submit", async event => {
         event.preventDefault();
         const formData = new FormData(event.currentTarget);
-        programs = programs.map(task => task.id === questionTaskId ? { ...task, completed: true, solvedQuestions: Number(formData.get("solvedQuestions")) } : task);
-        savePrograms();
-        questionTaskId = null;
-        render();
+        const changes = { completed: true, solvedQuestions: Number(formData.get("solvedQuestions")) };
+        const task = programs.find(item => item.id === questionTaskId);
+        const updatedTask = { ...task, ...changes };
+        programs = programs.map(item => item.id === questionTaskId ? updatedTask : item);
+        try {
+            if (userRole === "student") await updateStudentTask(questionTaskId, changes);
+            else await saveProgram(updatedTask);
+            questionTaskId = null;
+            render();
+        } catch (error) {
+            await showSaveError(error);
+        }
     });
 
     const closeResultModal = () => { resultTaskId = null; render(); };
     document.getElementById("closeResultModal")?.addEventListener("click", closeResultModal);
     document.getElementById("cancelResultModal")?.addEventListener("click", closeResultModal);
-    document.getElementById("resultForm")?.addEventListener("submit", event => {
+    document.getElementById("resultForm")?.addEventListener("submit", async event => {
         event.preventDefault();
         const formData = new FormData(event.currentTarget);
         const task = programs.find(program => program.id === resultTaskId);
@@ -323,10 +384,17 @@ function render() {
         (task.subject === "TYT Genel Deneme" ? ["Türkçe", "Sosyal", "Matematik", "Fizik", "Kimya", "Biyoloji"]
             : task.subject === "AYT Genel Deneme" ? ["Matematik", "Fizik", "Kimya", "Biyoloji"] : [task.subject])
             .forEach(subject => { scores[subject] = formData.get(`score-${subject}`); });
-        programs = programs.map(program => program.id === resultTaskId ? { ...program, completed: true, result: { scores, note: formData.get("note").trim() } } : program);
-        savePrograms();
-        resultTaskId = null;
-        render();
+        const changes = { completed: true, result: { scores, note: formData.get("note").trim() } };
+        const updatedTask = { ...task, ...changes };
+        programs = programs.map(program => program.id === resultTaskId ? updatedTask : program);
+        try {
+            if (userRole === "student") await updateStudentTask(resultTaskId, changes);
+            else await saveProgram(updatedTask);
+            resultTaskId = null;
+            render();
+        } catch (error) {
+            await showSaveError(error);
+        }
     });
 
     document.querySelectorAll("[data-task-card]").forEach(card => {
@@ -340,15 +408,20 @@ function render() {
     document.querySelectorAll("[data-day-dropzone]").forEach(zone => {
         zone.addEventListener("dragover", event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; zone.classList.add("drag-over"); });
         zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
-        zone.addEventListener("drop", event => {
+        zone.addEventListener("drop", async event => {
             event.preventDefault();
             zone.classList.remove("drag-over");
             const taskId = event.dataTransfer.getData("text/plain");
             const task = programs.find(program => program.id === taskId);
             if (!task) return;
-            programs.push({ ...task, id: crypto.randomUUID(), day: zone.dataset.dayDropzone, completed: false, result: undefined });
-            savePrograms();
-            render();
+            const copy = { ...task, id: crypto.randomUUID(), day: zone.dataset.dayDropzone, completed: false, result: undefined };
+            programs.push(copy);
+            try {
+                await saveProgram(copy);
+                render();
+            } catch (error) {
+                await showSaveError(error);
+            }
         });
     });
 
@@ -394,7 +467,7 @@ async function loadFirebaseData() {
             students.forEach(student => { student.coachId = signedInUser.uid; });
             programs.forEach(program => { program.coachId = signedInUser.uid; });
             await saveStudents();
-            await savePrograms();
+            await Promise.all(programs.map(saveProgram));
         } else {
             students = cloudStudents;
             programs = cloudPrograms;
