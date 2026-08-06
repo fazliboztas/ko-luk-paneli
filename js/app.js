@@ -71,7 +71,11 @@ async function showSaveError(error) {
 }
 
 function render() {
-    if (!authReady || !signedInUser) {
+    if (!authReady) {
+        app.innerHTML = `<main class="min-h-screen bg-slate-950 grid place-items-center p-5"><div class="text-center text-white"><i class="fa-solid fa-spinner fa-spin text-3xl"></i><p class="mt-4 text-slate-300">Oturum yükleniyor…</p></div></main>`;
+        return;
+    }
+    if (!signedInUser) {
         renderLogin();
         return;
     }
