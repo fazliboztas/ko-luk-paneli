@@ -5,8 +5,10 @@ function weeklyProgressForStudent(studentId) {
     studentTasks.forEach(task => {
         const week = task.weekStart || academicWeeks[0].key;
         const current = byWeek.get(week) || { week, questions: 0, minutes: 0 };
-        current.questions += Number(task.solvedQuestions) || 0;
-        current.minutes += Number(task.duration) || 0;
+        if (task.completed) {
+            current.questions += Number(task.solvedQuestions) || 0;
+            current.minutes += Number(task.duration) || 0;
+        }
         byWeek.set(week, current);
     });
     if (!studentTasks.length) return [];
