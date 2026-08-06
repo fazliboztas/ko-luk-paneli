@@ -34,11 +34,30 @@ function buildAcademicWeeks(startKey = "2026-09-14") {
 const academicWeeks = buildAcademicWeeks();
 let visibleAcademicWeeks = academicWeeks;
 
+function formatStudyDuration(minutes) {
+    const total = Number(minutes) || 0;
+    if (!total) return "0 dk";
+    const hours = Math.floor(total / 60);
+    const remainder = total % 60;
+    return [hours ? `${hours} saat` : "", remainder ? `${remainder} dakika` : ""].filter(Boolean).join(" ");
+}
+
+function taskResourceLink(task) {
+    if (!task.resourceUrl) return "";
+    try {
+        const url = new URL(task.resourceUrl);
+        if (!['http:', 'https:'].includes(url.protocol)) return "";
+        return `<a class="task-resource-link" href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-play mr-1"></i>Konu videosunu aç</a>`;
+    } catch {
+        return "";
+    }
+}
+
 function taskCard(task) {
     const description = task.description || task.topic || "Açıklama yok";
     const duration = task.duration ? `${escapeHtml(task.duration)} dk` : escapeHtml(task.goal || "—");
     const netTotal = task.result?.scores ? Object.values(task.result.scores).reduce((sum, score) => sum + (Number(score) || 0), 0) : null;
-    return `<article class="task-card ${task.completed ? "completed-task" : ""}" draggable="true" data-task-card="${task.id}"><div class="flex items-start justify-between gap-2"><span class="task-type-badge !ml-0">${escapeHtml(task.taskType || "Görev")}</span><i class="fa-solid fa-grip-vertical text-slate-300 mt-1"></i></div><h4 class="font-bold text-slate-800 mt-2">${escapeHtml(task.subject)}</h4><p class="text-sm text-slate-600 mt-1 leading-5">${escapeHtml(description)}</p><p class="text-xs text-slate-500 mt-3"><i class="fa-regular fa-clock mr-1"></i>${duration}</p>${netTotal !== null ? `<p class="result-total">Toplam net: ${netTotal.toFixed(2)}</p>` : ""}<div class="task-actions"><button data-complete-task="${task.id}" title="${task.taskType === "Deneme" ? "Sonuç gir" : "Tamamlandı"}" class="${task.completed ? "done-task" : ""}"><i class="fa-solid fa-${task.completed ? "check" : "circle-check"}"></i></button><button data-copy-task="${task.id}" title="Görevi kopyala"><i class="fa-regular fa-copy"></i></button><button data-edit-task="${task.id}" title="Görevi düzenle"><i class="fa-solid fa-pen"></i></button><button data-delete-task="${task.id}" title="Görevi sil" class="delete-task"><i class="fa-solid fa-trash"></i></button></div></article>`;
+    return `<article class="task-card ${task.completed ? "completed-task" : ""}" draggable="true" data-task-card="${task.id}"><div class="flex items-start justify-between gap-2"><span class="task-type-badge !ml-0">${escapeHtml(task.taskType || "Görev")}</span><i class="fa-solid fa-grip-vertical text-slate-300 mt-1"></i></div><h4 class="font-bold text-slate-800 mt-2">${escapeHtml(task.subject)}</h4><p class="text-sm text-slate-600 mt-1 leading-5">${escapeHtml(description)}</p>${task.goalQuestions ? `<p class="text-xs font-semibold text-blue-700 mt-2"><i class="fa-solid fa-bullseye mr-1"></i>Hedef: ${task.goalQuestions} soru</p>` : ""}<p class="text-xs text-slate-500 mt-3"><i class="fa-regular fa-clock mr-1"></i>${duration}</p>${taskResourceLink(task)}${netTotal !== null ? `<p class="result-total">Toplam net: ${netTotal.toFixed(2)}</p>` : ""}<div class="task-actions"><button data-complete-task="${task.id}" title="${task.taskType === "Deneme" ? "Sonuç gir" : "Tamamlandı"}" class="${task.completed ? "done-task" : ""}"><i class="fa-solid fa-${task.completed ? "check" : "circle-check"}"></i></button><button data-copy-task="${task.id}" title="Görevi kopyala"><i class="fa-regular fa-copy"></i></button><button data-edit-task="${task.id}" title="Görevi düzenle"><i class="fa-solid fa-pen"></i></button><button data-delete-task="${task.id}" title="Görevi sil" class="delete-task"><i class="fa-solid fa-trash"></i></button></div></article>`;
 }
 
 function examAnalysis(student) {
@@ -101,6 +120,6 @@ function programsPage() {
     const completedTasks = tasks.filter(task => task.completed).length;
     const completionRate = tasks.length ? Math.round((completedTasks / tasks.length) * 100) : 0;
     const solvedQuestions = tasks.reduce((total, task) => total + (Number(task.solvedQuestions) || 0), 0);
-    const columns = weekdayOrder.map(day => { const dayTasks = tasks.filter(task => task.day === day); return `<section class="week-day"><header><h3>${day}</h3><span>${dayTasks.length}</span></header><div class="day-dropzone" data-day-dropzone="${day}">${dayTasks.map(taskCard).join("")}<p class="drop-hint">Görevi buraya sürükle</p></div></section>`; }).join("");
+    const columns = weekdayOrder.map(day => { const dayTasks = tasks.filter(task => task.day === day); const duration = dayTasks.reduce((total, task) => total + (Number(task.duration) || 0), 0); return `<section class="week-day"><header><div><h3>${day}</h3><small>${formatStudyDuration(duration)}</small></div><span>${dayTasks.length}</span></header><div class="day-dropzone" data-day-dropzone="${day}">${dayTasks.map(taskCard).join("")}<p class="drop-hint">Görevi buraya sürükle</p></div></section>`; }).join("");
     return `<div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div><h2 class="text-3xl md:text-4xl font-bold text-slate-900">Haftalık program</h2><p class="text-slate-500 mt-2">İlk programın yazıldığı hafta, 1. hafta kabul edilir.</p></div><button id="addTaskBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-lg font-medium"><i class="fa-solid fa-plus mr-2"></i>Görev ekle</button></div><div class="mt-8 grid gap-5 lg:grid-cols-[minmax(0,400px)_1fr]"><div><label for="programStudentSelect" class="form-label mt-0">Öğrenci</label><select id="programStudentSelect" class="form-input">${students.map(student => `<option value="${student.id}" ${student.id === selectedStudentId ? "selected" : ""}>${escapeHtml(student.name)} · ${escapeHtml(student.class)}</option>`).join("")}</select></div><div><p class="form-label mt-0">Program haftası</p><div class="week-picker"><button data-week-shift="-1" ${weekIndex === 0 ? "disabled" : ""} aria-label="Önceki hafta"><i class="fa-solid fa-chevron-left"></i></button><select id="weekSelect" class="form-input">${visibleAcademicWeeks.map(week => `<option value="${week.key}" ${week.key === selectedWeek.key ? "selected" : ""}>${week.label}${week.milestone ? ` · ${week.milestone}` : ""}</option>`).join("")}</select><button data-week-shift="1" ${weekIndex === visibleAcademicWeeks.length - 1 ? "disabled" : ""} aria-label="Sonraki hafta"><i class="fa-solid fa-chevron-right"></i></button></div></div></div><div class="${selectedWeek.milestone ? "holiday-banner" : "bg-blue-50 border border-blue-100"} rounded-xl p-5 mt-6"><p class="font-semibold ${selectedWeek.milestone ? "text-amber-950" : "text-blue-950"}">${selectedWeek.label}</p><p class="text-sm mt-1 ${selectedWeek.milestone ? "text-amber-700" : "text-blue-700"}">${selectedWeek.milestone ? `Takvim notu: ${selectedWeek.milestone}.` : `${escapeHtml(selectedStudent.name)} · ${completionRate}% tamamlanma · ${solvedQuestions} çözülen soru.`}</p></div><div class="week-board mt-6">${columns}</div>${examAnalysis(selectedStudent)}`;
 }
