@@ -2,7 +2,7 @@ window.firebaseReady = Promise.all([
     import("https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js"),
     import("https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js"),
     import("https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js")
-]).then(([appSdk, authSdk, firestoreSdk]) => {
+]).then(async ([appSdk, authSdk, firestoreSdk]) => {
     const firebaseConfig = {
         apiKey: "AIzaSyAO86YiwT3um9Ro-GROFdJ0FQKgLJjgnCs",
         authDomain: "boztas-kocluk-1d073.firebaseapp.com",
@@ -14,5 +14,12 @@ window.firebaseReady = Promise.all([
     const app = appSdk.initializeApp(firebaseConfig);
     // İkinci Auth örneği, koçun oturumunu kapatmadan öğrenci hesabı oluşturmamızı sağlar.
     const studentProvisioningApp = appSdk.initializeApp(firebaseConfig, "student-provisioning");
-    return { auth: authSdk.getAuth(app), studentAuth: authSdk.getAuth(studentProvisioningApp), db: firestoreSdk.getFirestore(app), authSdk, firestoreSdk };
+    const auth = authSdk.getAuth(app);
+    // Tarayıcı kapatılıp açılsa veya sayfa yenilense de koç oturumu korunur.
+    try {
+        await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
+    } catch (error) {
+        console.warn("Kalıcı oturum etkinleştirilemedi:", error);
+    }
+    return { auth, studentAuth: authSdk.getAuth(studentProvisioningApp), db: firestoreSdk.getFirestore(app), authSdk, firestoreSdk };
 });
